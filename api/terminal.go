@@ -3,9 +3,8 @@ package api
 import (
 	"golang.org/x/crypto/ssh/terminal"
 	"io"
-	//"log"
 	"os"
-	//"strings"
+	"strings"
 )
 
 var autoGroup = []string{
@@ -17,11 +16,14 @@ var autoGroup = []string{
 
 type Completion []string
 
+type CmdCall func(term *Term, args []string) error
+
 type Term struct {
 	completions map[string]*Completion
 	terminal        *terminal.Terminal
 	fd          int
 	state       *terminal.State
+	cmds map[string]CmdCall
 }
 
 func NewTerm(prompt string) (*Term, error) {
@@ -37,11 +39,16 @@ func NewTerm(prompt string) (*Term, error) {
 		io.Writer
 	}{os.Stdin, os.Stdout}
 	term.terminal = terminal.NewTerminal(screen, prompt)
+    term.cmds = make(map[string]CmdCall)
 	return term, nil
 }
 
 func (term *Term) Close() error {
 	return terminal.Restore(term.fd, term.state)
+}
+
+func (term *Term) WriteString(data string) {
+    term.terminal.Write([]byte(data))
 }
 
 func (term *Term) Start() error {
@@ -56,9 +63,18 @@ func (term *Term) Start() error {
 		if line == "exit" {
 			break
 		}
-		term.terminal.Write([]byte(line + "\n"))
+        args := strings.Fields(line)
+        if call, ok := term.cmds[args[0]]; ok {
+            call(term, args[1:])
+            continue
+        }
+		// term.terminal.Write([]byte(line + "\n"))
 	}
 	return nil
+}
+
+func (term *Term) AddCmd(cmd string, call CmdCall) {
+    term.cmds[cmd] = call
 }
 
 /*
